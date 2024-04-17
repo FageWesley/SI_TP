@@ -28,12 +28,21 @@ class BookEncoder(json.JSONEncoder):
     def default(self,obj):
         if isinstance(obj,Book):
             return {
-                obj.name, obj.tag,obj.image
+                'name': obj.name,
+                'tag': obj.tag,
+                'image': obj.image
                 }
         return super().default(obj)
 #endregion
 #region Library 
 class Library:
+    library = None
+
+    @classmethod
+    def get_instance(cls):
+        if cls.library is None:
+            cls.library = Library()
+        return cls.library
 
     def __init__(self):
         self.__books = []
@@ -43,8 +52,10 @@ class Library:
         self.__books.append(book)
 
     def display_books(self):
+        books = ''
         for book in self.__books:
-            print(book)    
+            books += f'{book}\n' 
+        return books
 
     def remove_book(self,name):
         book_to_delete = None
@@ -58,15 +69,27 @@ class Library:
             output.write(json.dumps(self.__books, cls=BookEncoder))
 #endregion
 #region Server
-class MyTCPHandler(socketserver.BaseRequestHandler):
+class Server(socketserver.BaseRequestHandler):
 
     def handle(self):
         # self.request is the TCP socket connected to the client
-        self.data = self.request.recv(1024).strip()
+        self.data = self.request.recv(1024).strip().decode('utf-8')
         print("Received from {}:".format(self.client_address[0]))
-        print(self.data)
+        response = ''
+        if self.data == 'list':
+            response = f'List: {Library.get_instance().display_books()}'
         # just send back the same data, but upper-cased
-        self.request.sendall(self.data.upper())
+        if self.data.startswith('add'):
+            command,name,tag,image = self.data.split(',')
+            book = Book(name,tag,image)
+            Library.get_instance().add_book(book)
+            response = f'Adding {book} to library'
+
+        self.request.sendall(bytes(response, "utf-8"))
+
+#list : list books
+#add : add book
+#remove : remove book
 
     
 #endregion
@@ -76,7 +99,7 @@ if __name__ == '__main__':
     HOST, PORT = "localhost", 9999
 
     # Create the server, binding to localhost on port 9999
-    with socketserver.TCPServer((HOST, PORT), MyTCPHandler) as server:
+    with socketserver.TCPServer((HOST, PORT), Server) as server:
         # Activate the server; this will keep running until you
         # interrupt the program with Ctrl-C
         server.serve_forever()
